@@ -34,13 +34,17 @@ def getNextBitrate(history, chunkIndex, videoInput, gain):
 
     conRate = count / sum + getImportanceFactor(chunkIndex, videoInput, gain)
 
-    res = const.BITRATE_MIN
+    res = const.BITRATE_MIN + const.BITRATE_OFFSET
     while True:
-        if res >= const.BITRATE_MAX:
+        if res >= const.BITRATE_MAX + const.BITRATE_OFFSET:
             break
-        if res * const.BITRATE_DELTARATE > conRate:
+        if res * const.BITRATE_DELTARATE + const.BITRATE_OFFSET > conRate:
             break
         res *= const.BITRATE_DELTARATE
+
+    res += const.BITRATE_OFFSET
+        
+    gain += (conRate - res)
 
     return res
 
