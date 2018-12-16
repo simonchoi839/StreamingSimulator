@@ -5,7 +5,7 @@ HISTORY_COUNT = 10
 def getNextBitrate(history):
     count = min(len(history), HISTORY_COUNT)
     if count <= 0:
-        return const.BITRATE_MAX
+        return const.BITRATES[-1]
 
     sum = 0
     for i in range(count):
@@ -13,15 +13,11 @@ def getNextBitrate(history):
 
     conRate = count / sum
 
-    res = const.BITRATE_MIN + const.BITRATE_OFFSET
-    while True:
-        if res >= const.BITRATE_MAX + const.BITRATE_OFFSET:
+    res = const.BITRATES[0]
+    for i in range(len(const.BITRATES) - 1):
+        if conRate < const.BITRATES[i+1]:
             break
-        if res * const.BITRATE_DELTARATE + const.BITRATE_OFFSET > conRate:
-            break
-        res *= const.BITRATE_DELTARATE
-
-    res += const.BITRATE_OFFSET
+        res = const.BITRATES[i+1]
 
     return res
 
@@ -46,7 +42,7 @@ def simulate(videoInput, samplePath):
 
     bitrateHistory = []
 
-    nextBitrate = const.BITRATE_MAX
+    nextBitrate = const.BITRATES[0]
     bitrate = nextBitrate
 
     for i in range(len(lines)):

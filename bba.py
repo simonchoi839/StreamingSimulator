@@ -10,22 +10,19 @@ def getNextBitrate(buffer, bufferBitrate, currentRate):
     for i in range(len(buffer)):
         bufferSize += buffer[i] / (bufferBitrate[i] * const.BYTE_PER_KBIT)
     if bufferSize < RESERVOIR:
-        return const.BITRATE_MIN
+        return const.BITRATES[0]
     if bufferSize > const.BUFFER_MAX - RESERVOIR_UPPER:
-        return const.BITRATE_MAX
+        return const.BITRATES[-1]
 
-    slope = (const.BITRATE_MAX - const.BITRATE_MIN) / (const.BUFFER_MAX - RESERVOIR - RESERVOIR_UPPER)
-    safe = RESERVOIR + (currentRate - const.BITRATE_MIN) / (slope * CONST_SAFE)
-    conRate = const.BITRATE_MIN + slope * (bufferSize - RESERVOIR)
-    res = const.BITRATE_MIN + const.BITRATE_OFFSET
-    while True:
-        if res >= const.BITRATE_MAX + const.BITRATE_OFFSET:
-            break
-        if res * const.BITRATE_DELTARATE + const.BITRATE_OFFSET > conRate:
-            break
-        res *= const.BITRATE_DELTARATE
+    slope = (const.BITRATES[-1] - const.BITRATES[0]) / (const.BUFFER_MAX - RESERVOIR - RESERVOIR_UPPER)
+    safe = RESERVOIR + (currentRate - const.BITRATES[0]) / (slope * CONST_SAFE)
+    conRate = const.BITRATES[0] + slope * (bufferSize - RESERVOIR)
 
-    res += const.BITRATE_OFFSET
+    res = const.BITRATES[0]
+    for i in range(len(const.BITRATES) - 1):
+        if conRate < const.BITRATES[i+1]:
+            break
+        res = const.BITRATES[i+1]
 
     if bufferSize >= safe and currentRate > res:
         return currentRate
@@ -51,7 +48,7 @@ def simulate(videoInput, samplePath):
     impChunkCount = 0
     impChunkBytes = 0
 
-    nextBitrate = const.BITRATE_MAX
+    nextBitrate = const.BITRATES[0]
     bitrate = nextBitrate
 
     for i in range(len(lines)):

@@ -1,48 +1,72 @@
 import const
 
-HISTORY_COUNT = 10
-WINDOW_SIZE = 15
-ALPHA = 0.2
+RESERVOIR = 4
+RESERVOIR_UPPER = 4
+ALPHA = 2
+CONST_SAFE = 3
+WINDOW_SIZE = 10
 
-def getImportanceFactor(chunkIndex, videoInput, gain):
+def getNextBitrate(buffer, bufferBitrate, currentRate, chunkIndex, videoInput, gain):
+    if chunkIndex >= len(videoInput):
+        return const.BITRATES[0]
+
     totalCount = min(WINDOW_SIZE, len(videoInput) - chunkIndex)     # 예측할 윈도우 안의 청크 개수
     impCount = videoInput[chunkIndex:(chunkIndex + totalCount)].count('I')  # 윈도우 안의 중요 청크 개수
 
-    if impCount == 0:
-        return 0
+    # 현재 버퍼 사이즈
+    bufferSize = 0
+    for i in range(len(buffer)):
+        bufferSize += buffer[i] / (bufferBitrate[i] * const.BYTE_PER_KBIT)
+
+    # 최초 계산 값
+    slope = (const.BITRATES[-1] - const.BITRATES[0]) / (const.BUFFER_MAX - RESERVOIR - RESERVOIR_UPPER)
+    safe = RESERVOIR + (currentRate - const.BITRATES[0]) / (slope * CONST_SAFE)
+    if bufferSize < RESERVOIR:
+        origin = const.BITRATES[0]
+    elif bufferSize > const.BUFFER_MAX - RESERVOIR_UPPER:
+        origin = const.BITRATES[-1]
+    else:
+        origin = const.BITRATES[0] + slope * (bufferSize - RESERVOIR)
+
+    # 최초 계산값 기준 discrete bitrate
+    origin_res = const.BITRATES[0]
+    for i in range(len(const.BITRATES) - 1):
+        if origin < const.BITRATES[i+1]:
+            break
+        origin_res = const.BITRATES[i+1]
+
+    if bufferSize >= safe and currentRate > origin_res:
+        origin_res = currentRate
+
+    # 보정값
+    delta = 0
+    if videoInput[chunkIndex] == 'N':
+        delta = ALPHA * (impCount / totalCount)
+#    else:
+#        delta = - (gain / impCount) / slope
+
+    if bufferSize < RESERVOIR + delta:
+        modified = const.BITRATES[0]
+    elif bufferSize > const.BUFFER_MAX - (RESERVOIR_UPPER - delta):
+        modified = const.BITRATES[-1]
+    else:
+        modified = const.BITRATES[0] + slope * (bufferSize - (RESERVOIR + delta))
 
     if videoInput[chunkIndex] == 'I':
-        res = gain / impCount
-        gain -= res
-        return res
-    else:
-        if gain >= impCount * const.BITRATES[-1]:
-            return 0
+        modified += (gain / impCount)
 
-        res = (-ALPHA) * const.BITRATE_TARGET * impCount / (totalCount - impCount)
-        gain -= res
-        return res
-
-def getNextBitrate(history, chunkIndex, videoInput, gain):
-    count = min(len(history), HISTORY_COUNT)
-    if count <= 0:
-        return const.BITRATES[-1]
-
-    sum = 0
-    for i in range(count):
-        sum += 1 / history[count - 1 - i]
-
-    conRate = count / sum + getImportanceFactor(chunkIndex, videoInput, gain)
-
-    res = const.BITRATES[0]
+    # 보정값 기준 discrete bitrate
+    modified_res = const.BITRATES[0]
     for i in range(len(const.BITRATES) - 1):
-        if conRate < const.BITRATES[i+1]:
+        if modified < const.BITRATES[i + 1]:
             break
-        res = const.BITRATES[i+1]
-        
-    gain += (conRate - res)
+        modified_res = const.BITRATES[i + 1]
 
-    return res
+    if bufferSize >= safe + delta and currentRate > origin_res:
+        modified_res = currentRate
+
+    gain += (modified_res - origin_res)
+    return modified_res
 
 def simulate(videoInput, samplePath):
     sampleFile = open(samplePath, 'r', encoding='utf-8')
@@ -63,21 +87,19 @@ def simulate(videoInput, samplePath):
     impChunkCount = 0
     impChunkBytes = 0
 
-    bitrateHistory = []
-    gain = 0
-
     nextBitrate = const.BITRATES[0]
     bitrate = nextBitrate
 
+    gain = 0
+
     for i in range(len(lines)):
+
         if chunkCount == totalChunkCount:
             break
         line = lines[i]
         split = line.split(' ')
         timeToPlay = int(split[5])
         downloadBytes = int(split[4])
-
-        bitrateHistory.append((downloadBytes / const.BYTE_PER_KBIT) / (timeToPlay / 1000))
 
         # 다운로드 먼저
         timestamp += timeToPlay
@@ -139,12 +161,10 @@ def simulate(videoInput, samplePath):
                 break
 
         # 다음에 요청할 bitrate 결정
-        nextBitrate = getNextBitrate(bitrateHistory, chunkCount + len(buffer), videoInput, gain)
-        if len(bitrateHistory) > HISTORY_COUNT:
-            bitrateHistory = bitrateHistory[-HISTORY_COUNT:]
+        nextBitrate = getNextBitrate(buffer, bufferBitrate, nextBitrate, chunkCount + len(buffer), videoInput, gain)
 
     print('')
-    print('============== SUMMARY (Importance Algorithm) ==============')
+    print('============== SUMMARY (Buffer-Based Algorithm + IMP) ==============')
     print('Total Play Time: ', timestamp / 1000, 'seconds')
     print('Average Bitrate: ', (totalBytes / const.BYTE_PER_KBIT) / (totalChunkCount * const.CHUNK_SIZE), 'kbps')
     print('Average Bitrate (Important Range): ', (impChunkBytes / const.BYTE_PER_KBIT) / (impChunkCount * const.CHUNK_SIZE), 'kbps')
