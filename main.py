@@ -18,14 +18,18 @@ def loadVideo(videoPath, replayCount):
     return output
 
 def main():
-    samplePath = "samples/report.2010-09-13_1003CEST.log"
-    videoInput = "samples/video_sample_01.txt"
+    samplePath = "samples/report.2011-02-11_1618CET.log"
+    videoInputPath = "samples/video_sample_01.txt"
 
-    videoInput = loadVideo(videoInput, 3)
+    videoInput = loadVideo(videoInputPath, 10)
 
     prediction.simulate(videoInput, samplePath)
     importance.simulate(videoInput, samplePath)
-    bba.simulate(videoInput, samplePath)
-    bba_imp.simulate(videoInput, samplePath)
+    bba.simulate(videoInput, samplePath, \
+        'result/bba.chunk.' + videoInputPath.split('/')[1].split('.')[0] + '.' + samplePath.split('/')[1].split('.')[1] + '.tsv', \
+        'result/bba.time.' + videoInputPath.split('/')[1].split('.')[0] + '.' + samplePath.split('/')[1].split('.')[1] + '.tsv')
+    bba_imp.simulate(videoInput, samplePath, \
+        'result/bba_imp.chunk.' + videoInputPath.split('/')[1].split('.')[0] + '.' + samplePath.split('/')[1].split('.')[1] + '.tsv', \
+        'result/bba_imp.time.' + videoInputPath.split('/')[1].split('.')[0] + '.' + samplePath.split('/')[1].split('.')[1] + '.tsv')
 
 main()

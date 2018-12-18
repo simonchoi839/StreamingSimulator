@@ -20,7 +20,10 @@ def getNextBitrate(buffer, bufferBitrate, currentRate, chunkIndex, videoInput, g
 
     # 최초 계산 값
     slope = (const.BITRATES[-1] - const.BITRATES[0]) / (const.BUFFER_MAX - RESERVOIR - RESERVOIR_UPPER)
-    safe = RESERVOIR + (currentRate - const.BITRATES[0]) / (slope * CONST_SAFE)
+    if currentRate == const.BITRATES[0]:
+        safe = 0
+    else:
+        safe = RESERVOIR + (currentRate - const.BITRATES[0]) / (slope * CONST_SAFE)
     if bufferSize < RESERVOIR:
         origin = const.BITRATES[0]
     elif bufferSize > const.BUFFER_MAX - RESERVOIR_UPPER:
@@ -53,7 +56,7 @@ def getNextBitrate(buffer, bufferBitrate, currentRate, chunkIndex, videoInput, g
         modified = const.BITRATES[0] + slope * (bufferSize - (RESERVOIR + delta))
 
     if videoInput[chunkIndex] == 'I':
-        modified += (gain / impCount)
+        modified += (gain[0] / impCount)
 
     # 보정값 기준 discrete bitrate
     modified_res = const.BITRATES[0]
@@ -65,13 +68,16 @@ def getNextBitrate(buffer, bufferBitrate, currentRate, chunkIndex, videoInput, g
     if bufferSize >= safe + delta and currentRate > origin_res:
         modified_res = currentRate
 
-    gain += (modified_res - origin_res)
+    gain[0] += (origin_res - modified_res)
     return modified_res
 
-def simulate(videoInput, samplePath):
+def simulate(videoInput, samplePath, resultPath_chunk, resultPath_time):
     sampleFile = open(samplePath, 'r', encoding='utf-8')
     lines = sampleFile.readlines()
     totalChunkCount = len(videoInput)
+
+    resultFile_chunk = open(resultPath_chunk, 'w', encoding='utf-8')
+    resultFile_time = open(resultPath_time, 'w', encoding='utf-8')
 
     timestamp = 0       # 흐른 시간(ms)
     totalBytes = 0      # 처음부터 재생된 바이트 수(byte)
@@ -83,6 +89,8 @@ def simulate(videoInput, samplePath):
     bufferingTime = 0   # 총 버퍼링 시간 (ms)
     playing = False     # 버퍼의 첫번째 chunk가 플레이중인지
     buffering = True
+    playingTime = 0
+    impPlayingTime = 0
 
     impChunkCount = 0
     impChunkBytes = 0
@@ -90,7 +98,7 @@ def simulate(videoInput, samplePath):
     nextBitrate = const.BITRATES[0]
     bitrate = nextBitrate
 
-    gain = 0
+    gain = [0]
 
     for i in range(len(lines)):
 
@@ -130,19 +138,24 @@ def simulate(videoInput, samplePath):
 
                 if willConsume >= buffer[0]:
                     timeToPlay -= (buffer[0] * 1000 / (bufferBitrate[0] * const.BYTE_PER_KBIT))
+                    playingTime += (buffer[0] * 1000 / (bufferBitrate[0] * const.BYTE_PER_KBIT))
                     totalBytes += buffer[0]
                     if videoInput[chunkCount] == 'I':
                         impChunkBytes += buffer[0]
+                        impPlayingTime += (buffer[0] * 1000 / (bufferBitrate[0] * const.BYTE_PER_KBIT))
                     buffer[0] = 0
                 else:
                     buffer[0] -= willConsume
                     totalBytes += willConsume
                     if videoInput[chunkCount] == 'I':
                         impChunkBytes += willConsume
+                        impPlayingTime += timeToPlay
+                    playingTime += timeToPlay
                     timeToPlay = 0
 
                 # 앞버퍼를 모두 소진한 경우 버퍼를 당김
                 if buffer[0] == 0:
+                    resultFile_chunk.write(str(chunkCount) + '\t' + videoInput[chunkCount] + '\t' + str(bufferBitrate[0]) + '\n')
                     if videoInput[chunkCount] == 'I':
                         impChunkCount += 1
 
@@ -162,12 +175,22 @@ def simulate(videoInput, samplePath):
 
         # 다음에 요청할 bitrate 결정
         nextBitrate = getNextBitrate(buffer, bufferBitrate, nextBitrate, chunkCount + len(buffer), videoInput, gain)
+        bufferLength = 0
+        if len(bufferBitrate) > 0:
+            bitrate = bufferBitrate[0]
+        else:
+            bitrate = 0
+        for i in range(len(buffer)):
+            bufferLength += (buffer[i] / const.BYTE_PER_KBIT) / bufferBitrate[i]
+        resultFile_time.write(str(timestamp / 1000) + '\t' + videoInput[chunkCount - 1] + '\t' + str(bufferLength) + '\t' + str(bitrate) + '\n')
 
     print('')
     print('============== SUMMARY (Buffer-Based Algorithm + IMP) ==============')
     print('Total Play Time: ', timestamp / 1000, 'seconds')
-    print('Average Bitrate: ', (totalBytes / const.BYTE_PER_KBIT) / (totalChunkCount * const.CHUNK_SIZE), 'kbps')
+    print('Average Bitrate: ', (totalBytes / const.BYTE_PER_KBIT) / (playingTime / 1000), 'kbps')
     print('Average Bitrate (Important Range): ', (impChunkBytes / const.BYTE_PER_KBIT) / (impChunkCount * const.CHUNK_SIZE), 'kbps')
     print('Rebuffering Count: ', rebufferCount)
     print('Buffering Time: ', bufferingTime / 1000, 'seconds')
     sampleFile.close()
+    resultFile_chunk.close()
+    resultFile_time.close()

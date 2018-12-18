@@ -12,15 +12,15 @@ def getImportanceFactor(chunkIndex, videoInput, gain):
         return 0
 
     if videoInput[chunkIndex] == 'I':
-        res = gain / impCount
-        gain -= res
+        res = gain[0] / impCount
+        gain[0] -= res
         return res
     else:
-        if gain >= impCount * const.BITRATES[-1]:
+        if gain[0] >= impCount * const.BITRATES[-1]:
             return 0
 
         res = (-ALPHA) * const.BITRATE_TARGET * impCount / (totalCount - impCount)
-        gain -= res
+        gain[0] -= res
         return res
 
 def getNextBitrate(history, chunkIndex, videoInput, gain):
@@ -40,7 +40,7 @@ def getNextBitrate(history, chunkIndex, videoInput, gain):
             break
         res = const.BITRATES[i+1]
         
-    gain += (conRate - res)
+    gain[0] += (conRate - res)
 
     return res
 
@@ -64,7 +64,7 @@ def simulate(videoInput, samplePath):
     impChunkBytes = 0
 
     bitrateHistory = []
-    gain = 0
+    gain = [0]
 
     nextBitrate = const.BITRATES[0]
     bitrate = nextBitrate
